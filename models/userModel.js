@@ -16,4 +16,8 @@ async function findOrCreateUser(phone_number) {
   return user;
 }
 
-module.exports = { findOrCreateUser };
+async function getUserById(userId) {
+  return await db('users').where({ id: userId }).first();
+}
+
+module.exports = { findOrCreateUser, getUserById };

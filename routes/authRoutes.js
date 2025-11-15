@@ -1,7 +1,8 @@
 // src/routes/authRoutes.js
 const express = require('express');
 const { requestOTP, verifyOTP } = require('../services/otpService');
-const { findOrCreateUser } = require('../models/userModel');
+const { findOrCreateUser, getUserById } = require('../models/userModel');
+const { requireAuth } = require('../middleware/authMiddleware');
 const router = express.Router();
 
 router.post('/request-otp', async (req, res) => {
@@ -59,4 +60,20 @@ router.post('/request-otp', async (req, res) => {
       res.status(500).json({ error: 'Failed to verify OTP' });
     }
   });
+
+router.get('/me', requireAuth, async (req, res) => {
+  try {
+    const user = await getUserById(req.session.userId);
+    
+    if (!user) {
+      return res.status(401).json({ error: 'User not found' });
+    }
+    
+    res.json({ success: true, user });
+  } catch (error) {
+    console.error('Error fetching user:', error);
+    res.status(500).json({ error: 'Failed to fetch user details' });
+  }
+});
+
 module.exports = router;
