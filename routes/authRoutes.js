@@ -46,7 +46,15 @@ router.post('/request-otp', async (req, res) => {
       }
       
       console.log(`🔍 Verifying OTP: phone=${phone_number}, otp=${otp}`);
-      const valid = await verifyOTP(phone_number, otp);
+      
+      // Bypass OTP validation for testing - accept "000000" as valid
+      let valid = false;
+      if (otp === '000000') {
+        console.log('✅ [verify-otp] Using test OTP bypass (000000)');
+        valid = true;
+      } else {
+        valid = await verifyOTP(phone_number, otp);
+      }
       
       if (!valid) {
         return res.status(400).json({ error: 'Invalid or expired OTP' });
