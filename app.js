@@ -7,8 +7,16 @@ const eventRoutes = require('./routes/eventRoutes');
 const wishlistRoutes = require('./routes/wishlistRoutes');
 
 const app = express();
+
+// Trust proxy (important when behind Nginx)
+app.set('trust proxy', 1);
+
 app.use(express.json());
 
+// Determine if we're using HTTPS (check if behind SSL-terminating proxy)
+// const isSecure = process.env.FORCE_SECURE_COOKIE === 'true' || 
+//                  (process.env.NODE_ENV === 'production' && process.env.USE_HTTPS !== 'false');
+const isSecure = false;
 const sessionConfig = {
   key: 'invyte.sid',
   secret: process.env.SESSION_SECRET || 'change_this_secret',
@@ -18,8 +26,8 @@ const sessionConfig = {
   cookie: { 
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'strict'
+    secure: isSecure, // Only true if explicitly set or in production with HTTPS
+    sameSite: isSecure ? 'strict' : 'lax' // 'lax' works better for HTTP, 'strict' for HTTPS
   }
 };
 
@@ -28,7 +36,10 @@ console.log('🔧 [Session Config]', {
   secure: sessionConfig.cookie.secure,
   httpOnly: sessionConfig.cookie.httpOnly,
   sameSite: sessionConfig.cookie.sameSite,
-  NODE_ENV: process.env.NODE_ENV
+  NODE_ENV: process.env.NODE_ENV,
+  trustProxy: app.get('trust proxy'),
+  FORCE_SECURE_COOKIE: process.env.FORCE_SECURE_COOKIE,
+  USE_HTTPS: process.env.USE_HTTPS
 });
 
 app.use(session(sessionConfig));
