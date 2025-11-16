@@ -127,4 +127,39 @@ async function updateEventWishlist(userId, eventId, items) {
     .orderBy('created_at', 'asc');
 }
 
-module.exports = { addItemsToWishlist, addItemsToEventDirectly, updateEventWishlist };
+// Claim a wishlist item for an event by a user
+async function claimWishlistItem(userId, eventId, wishlistItemId) {
+  // Verify item belongs to event
+  const item = await db('event_wishlist_items')
+    .where({ id: wishlistItemId, event_id: eventId })
+    .first();
+  if (!item) {
+    const error = new Error('Wishlist item not found for this event');
+    error.status = 404;
+    throw error;
+  }
+
+  // Create gift claim
+  const claimId = uuidv4();
+  await db('gift_claims').insert({
+    id: claimId,
+    event_wishlist_item_id: wishlistItemId,
+    claimed_by: userId,
+    claim_status: 'pending'
+  });
+
+  // Mark item as claimed
+  await db('event_wishlist_items')
+    .where({ id: wishlistItemId })
+    .update({ is_claimed: 1, status: 'claimed' });
+
+  const claim = await db('gift_claims').where({ id: claimId }).first();
+  const updatedItem = await db('event_wishlist_items')
+    .select('id', 'item_name', 'item_url', 'status', 'is_claimed')
+    .where({ id: wishlistItemId })
+    .first();
+
+  return { claim, item: updatedItem };
+}
+
+module.exports = { addItemsToWishlist, addItemsToEventDirectly, updateEventWishlist, claimWishlistItem };

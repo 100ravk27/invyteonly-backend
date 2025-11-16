@@ -146,5 +146,66 @@ async function updateEventGuestlist(eventId, guests) {
   return await getGuestsByEventId(eventId);
 }
 
-module.exports = { addGuestsToEvent, getGuestsByEventId, updateEventGuestlist };
+/**
+ * Respond to an invitation (accept/decline/maybe)
+ * @param {string} eventId - Event ID
+ * @param {string} guestName - Guest name
+ * @param {string} guestId - Guest ID (phone number)
+ * @param {string} rsvpStatus - RSVP status: 'yes', 'no', 'maybe'
+ * @returns {Object|null} - Updated guest record or null if not found
+ */
+async function respondToInvitation(eventId, guestName, guestId, rsvpStatus = 'yes') {
+  // Validate rsvp_status
+  const validStatuses = ['yes', 'no', 'maybe'];
+  if (!validStatuses.includes(rsvpStatus)) {
+    throw new Error(`Invalid RSVP status. Must be one of: ${validStatuses.join(', ')}`);
+  }
+
+  // Build where clause with both guest_name and guest_id
+  const whereClause = {
+    event_id: eventId
+  };
+  
+  if (guestName) {
+    whereClause.guest_name = guestName;
+  }
+  
+  if (guestId) {
+    whereClause.guest_id = guestId;
+  }
+
+  // Find the guest by event_id, guest_name, and guest_id
+  const guest = await db('event_guests')
+    .where(whereClause)
+    .first();
+
+  if (!guest) {
+    return null;
+  }
+
+  // Update RSVP status and responded_at timestamp
+  await db('event_guests')
+    .where(whereClause)
+    .update({
+      rsvp_status: rsvpStatus,
+      responded_at: new Date(),
+      updated_at: new Date()
+    });
+
+  // Optionally update invite_status to 'joined' if accepted
+  if (rsvpStatus === 'yes') {
+    await db('event_guests')
+      .where(whereClause)
+      .update({
+        invite_status: 'joined'
+      });
+  }
+
+  // Return updated guest record
+  return await db('event_guests')
+    .where(whereClause)
+    .first();
+}
+
+module.exports = { addGuestsToEvent, getGuestsByEventId, updateEventGuestlist, respondToInvitation };
 

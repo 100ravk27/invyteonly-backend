@@ -118,31 +118,20 @@ async function createEvent(userId, eventData) {
   
   // Add optional fields if they exist in the request
   if (eventData.description !== undefined) eventInsert.description = eventData.description;
-  // Save event_date exactly as provided (no timezone conversion)
+  // Save event_date exactly as provided as a raw string (no conversion)
   if (eventData.event_date !== undefined) {
-    const dateStr = toMySQLDateTime(eventData.event_date);
-    // Use CAST to ensure MySQL treats the date string as-is without timezone conversion
-    eventInsert.event_date = db.raw(`CAST(? AS DATETIME)`, [dateStr]);
+    eventInsert.event_date = String(eventData.event_date);
   }
   if (eventData.venue !== undefined) eventInsert.venue = eventData.venue;
   if (eventData.theme !== undefined) eventInsert.theme = eventData.theme;
   
   await db('events').insert(eventInsert);
   
-  // Read event_date as raw string to avoid timezone conversion
+  // Read event as-is (no DATE_FORMAT, no conversion)
   const event = await db('events')
-    .select('*', db.raw('DATE_FORMAT(event_date, "%Y-%m-%d %H:%i:%s") as event_date_raw'))
+    .select('*')
     .where({ id: eventId })
     .first();
-  
-  // Use raw date string if available, otherwise use the date object
-  if (event) {
-    if (event.event_date_raw) {
-      event.event_date = fromMySQLDateTime(event.event_date_raw);
-    } else if (event.event_date) {
-      event.event_date = fromMySQLDateTime(event.event_date);
-    }
-  }
   
   // Add guestlist if provided
   let guestlist = [];
@@ -167,21 +156,13 @@ async function getWishlistItemsByEventId(eventId) {
 }
 
 async function getEventById(id) {
-  // Read event_date as raw string to avoid timezone conversion
+  // Read event as-is (no DATE_FORMAT, no conversion)
   const event = await db('events')
-    .select('*', db.raw('DATE_FORMAT(event_date, "%Y-%m-%d %H:%i:%s") as event_date_raw'))
+    .select('*')
     .where({ id })
     .first();
   
   if (!event) return null;
-  
-  // Convert event_date back to ISO format for response
-  if (event.event_date_raw) {
-    event.event_date = fromMySQLDateTime(event.event_date_raw);
-    delete event.event_date_raw; // Clean up temporary field
-  } else if (event.event_date) {
-    event.event_date = fromMySQLDateTime(event.event_date);
-  }
   
   // Get guestlist for the event
   const guestlist = await getGuestsByEventId(id);
@@ -200,22 +181,14 @@ async function getAllEvents(userId = null) {
     query = query.where({ host_id: userId });
   }
   
-  // Read event_date as raw string to avoid timezone conversion
+  // Read events as-is (no DATE_FORMAT, no conversion)
   const events = await query
-    .select('*', db.raw('DATE_FORMAT(event_date, "%Y-%m-%d %H:%i:%s") as event_date_raw'))
+    .select('*')
     .orderBy('created_at', 'desc');
   
   // Get guestlist and wishlist items for each event
   const eventsWithDetails = await Promise.all(
     events.map(async (event) => {
-      // Convert event_date back to ISO format for response
-      if (event.event_date_raw) {
-        event.event_date = fromMySQLDateTime(event.event_date_raw);
-        delete event.event_date_raw; // Clean up temporary field
-      } else if (event.event_date) {
-        event.event_date = fromMySQLDateTime(event.event_date);
-      }
-      
       const guestlist = await getGuestsByEventId(event.id);
       const wishlist_items = await getWishlistItemsByEventId(event.id);
       return { ...event, guestlist, wishlist_items };
@@ -236,11 +209,9 @@ async function updateEvent(eventId, userId, eventData) {
   const eventUpdate = {};
   if (eventData.title !== undefined) eventUpdate.title = eventData.title;
   if (eventData.description !== undefined) eventUpdate.description = eventData.description;
-  // Save event_date exactly as provided (no timezone conversion)
+  // Save event_date exactly as provided as a raw string (no conversion)
   if (eventData.event_date !== undefined) {
-    const dateStr = toMySQLDateTime(eventData.event_date);
-    // Use CAST to ensure MySQL treats the date string as-is without timezone conversion
-    eventUpdate.event_date = db.raw(`CAST(? AS DATETIME)`, [dateStr]);
+    eventUpdate.event_date = String(eventData.event_date);
   }
   if (eventData.venue !== undefined) eventUpdate.venue = eventData.venue;
   if (eventData.theme !== undefined) eventUpdate.theme = eventData.theme;
@@ -281,21 +252,11 @@ async function updateEvent(eventId, userId, eventData) {
     }
   }
   
-  // Read event_date as raw string to avoid timezone conversion
+  // Read updated event as-is (no DATE_FORMAT, no conversion)
   const updatedEvent = await db('events')
-    .select('*', db.raw('DATE_FORMAT(event_date, "%Y-%m-%d %H:%i:%s") as event_date_raw'))
+    .select('*')
     .where({ id: eventId })
     .first();
-  
-  // Convert event_date back to ISO format for response
-  if (updatedEvent) {
-    if (updatedEvent.event_date_raw) {
-      updatedEvent.event_date = fromMySQLDateTime(updatedEvent.event_date_raw);
-      delete updatedEvent.event_date_raw; // Clean up temporary field
-    } else if (updatedEvent.event_date) {
-      updatedEvent.event_date = fromMySQLDateTime(updatedEvent.event_date);
-    }
-  }
   
   // Get guestlist and wishlist if not already updated
   if (guestlist === null) {
@@ -308,4 +269,40 @@ async function updateEvent(eventId, userId, eventData) {
   return { ...updatedEvent, guestlist, wishlist_items };
 }
 
-module.exports = { createEvent, getEventById, getAllEvents, updateEvent };
+// Get events hosted by a specific user (host_id)
+async function getEventsByHostId(hostId) {
+  return await db('events')
+    .where({ host_id: hostId })
+    .orderBy('created_at', 'desc');
+}
+
+// Get events where a phone number appears in the guestlist (guest_id stores phone_number)
+async function getEventsByGuestPhone(phone_number) {
+  return await db('event_guests as eg')
+    .join('events as e', 'eg.event_id', 'e.id')
+    .select(
+      'e.*',
+      'eg.guest_id',
+      'eg.guest_name',
+      'eg.invite_status',
+      'eg.rsvp_status',
+      'eg.invited_at',
+      'eg.responded_at'
+    )
+    .where('eg.guest_id', phone_number)
+    .orderBy('e.created_at', 'desc');
+}
+
+// Attach guestlist and wishlist to a list of events
+async function hydrateEvents(events) {
+  return Promise.all(events.map(async (ev) => {
+    const guestlist = await getGuestsByEventId(ev.id);
+    const wishlist_items = await db('event_wishlist_items')
+      .select('id', 'item_name', 'item_url')
+      .where({ event_id: ev.id })
+      .orderBy('created_at', 'asc');
+    return { ...ev, guestlist, wishlist_items };
+  }));
+}
+
+module.exports = { createEvent, getEventById, getAllEvents, updateEvent, getEventsByHostId, getEventsByGuestPhone, hydrateEvents };

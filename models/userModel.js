@@ -20,4 +20,8 @@ async function getUserById(userId) {
   return await db('users').where({ id: userId }).first();
 }
 
-module.exports = { findOrCreateUser, getUserById };
+async function getUserByPhone(phone_number) {
+  return await db('users').where({ phone_number }).first();
+}
+
+module.exports = { findOrCreateUser, getUserById, getUserByPhone };
