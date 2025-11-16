@@ -53,7 +53,13 @@ router.post('/request-otp', async (req, res) => {
       }
       
       const user = await findOrCreateUser(phone_number);
+      console.log('✅ [verify-otp] User found/created:', { id: user.id, phone: user.phone_number });
+      
       req.session.userId = user.id;
+      console.log('✅ [verify-otp] Session userId set:', req.session.userId);
+      console.log('✅ [verify-otp] Session ID:', req.session.id);
+      console.log('✅ [verify-otp] Full session after set:', JSON.stringify(req.session, null, 2));
+      
       res.json({ success: true, user });
     } catch (error) {
       console.error('Error verifying OTP:', error);
@@ -63,15 +69,32 @@ router.post('/request-otp', async (req, res) => {
 
 router.get('/me', requireAuth, async (req, res) => {
   try {
-    const user = await getUserById(req.session.userId);
+    console.log('👤 [GET /me] Endpoint called');
+    console.log('👤 [GET /me] req.session:', JSON.stringify(req.session || {}, null, 2));
+    console.log('👤 [GET /me] req.session.userId:', req.session?.userId);
+    console.log('👤 [GET /me] req.userId (from middleware):', req.userId);
+    
+    const userId = req.session.userId || req.userId;
+    console.log('👤 [GET /me] Using userId:', userId);
+    
+    if (!userId) {
+      console.error('❌ [GET /me] No userId found in session or req');
+      return res.status(401).json({ error: 'User not found in session' });
+    }
+    
+    const user = await getUserById(userId);
+    console.log('👤 [GET /me] User from DB:', user ? { id: user.id, phone: user.phone_number } : 'NOT FOUND');
     
     if (!user) {
+      console.error('❌ [GET /me] User not found in database for userId:', userId);
       return res.status(401).json({ error: 'User not found' });
     }
     
+    console.log('✅ [GET /me] Successfully returning user data');
     res.json({ success: true, user });
   } catch (error) {
-    console.error('Error fetching user:', error);
+    console.error('❌ [GET /me] Error fetching user:', error);
+    console.error('❌ [GET /me] Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to fetch user details' });
   }
 });

@@ -9,7 +9,7 @@ const wishlistRoutes = require('./routes/wishlistRoutes');
 const app = express();
 app.use(express.json());
 
-app.use(session({
+const sessionConfig = {
   key: 'invyte.sid',
   secret: process.env.SESSION_SECRET || 'change_this_secret',
   // store: sessionStore, // Removed - using default in-memory store
@@ -21,7 +21,17 @@ app.use(session({
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'strict'
   }
-}));
+};
+
+console.log('🔧 [Session Config]', {
+  key: sessionConfig.key,
+  secure: sessionConfig.cookie.secure,
+  httpOnly: sessionConfig.cookie.httpOnly,
+  sameSite: sessionConfig.cookie.sameSite,
+  NODE_ENV: process.env.NODE_ENV
+});
+
+app.use(session(sessionConfig));
 
 app.use('/auth', authRoutes);
 app.use('/events', eventRoutes);
