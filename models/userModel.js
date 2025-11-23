@@ -24,4 +24,18 @@ async function getUserByPhone(phone_number) {
   return await db('users').where({ phone_number }).first();
 }
 
-module.exports = { findOrCreateUser, getUserById, getUserByPhone };
+/**
+ * Update user name
+ * @param {string} userId - User ID
+ * @param {string} name - User name
+ * @returns {Object} - Updated user object
+ */
+async function updateUserName(userId, name) {
+  await db('users')
+    .where({ id: userId })
+    .update({ name: name || null });
+  
+  return await db('users').where({ id: userId }).first();
+}
+
+module.exports = { findOrCreateUser, getUserById, getUserByPhone, updateUserName };

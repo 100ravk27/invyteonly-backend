@@ -152,9 +152,11 @@ async function updateEventGuestlist(eventId, guests) {
  * @param {string} guestName - Guest name
  * @param {string} guestId - Guest ID (phone number)
  * @param {string} rsvpStatus - RSVP status: 'yes', 'no', 'maybe'
+ * @param {string} giftOption - Gift option: 'BYOG', 'no gift', 'gift card', 'gift'
+ * @param {string} wishlistId - Wishlist ID (first claimed item if multiple)
  * @returns {Object|null} - Updated guest record or null if not found
  */
-async function respondToInvitation(eventId, guestName, guestId, rsvpStatus = 'yes') {
+async function respondToInvitation(eventId, guestName, guestId, rsvpStatus = 'yes', giftOption = null, wishlistId = null) {
   // Validate rsvp_status
   const validStatuses = ['yes', 'no', 'maybe'];
   if (!validStatuses.includes(rsvpStatus)) {
@@ -183,14 +185,27 @@ async function respondToInvitation(eventId, guestName, guestId, rsvpStatus = 'ye
     return null;
   }
 
-  // Update RSVP status and responded_at timestamp
+  // Build update object
+  const updateData = {
+    rsvp_status: rsvpStatus,
+    responded_at: new Date(),
+    updated_at: new Date()
+  };
+
+  // Add gift_option if provided
+  if (giftOption !== null && giftOption !== undefined) {
+    updateData.gift_option = giftOption;
+  }
+
+  // Add wishlist_id if provided (store first claimed item's ID)
+  if (wishlistId !== null && wishlistId !== undefined) {
+    updateData.wishlist_id = wishlistId;
+  }
+
+  // Update RSVP status, gift option, and responded_at timestamp
   await db('event_guests')
     .where(whereClause)
-    .update({
-      rsvp_status: rsvpStatus,
-      responded_at: new Date(),
-      updated_at: new Date()
-    });
+    .update(updateData);
 
   // Optionally update invite_status to 'joined' if accepted
   if (rsvpStatus === 'yes') {
@@ -207,5 +222,61 @@ async function respondToInvitation(eventId, guestName, guestId, rsvpStatus = 'ye
     .first();
 }
 
-module.exports = { addGuestsToEvent, getGuestsByEventId, updateEventGuestlist, respondToInvitation };
+/**
+ * Get RSVP status and gift option for a guest in an event
+ * @param {string} eventId - Event ID
+ * @param {string} phoneNumber - Guest phone number
+ * @returns {Object|null} - RSVP status and gift information or null if guest not found
+ */
+async function getRsvpStatus(eventId, phoneNumber) {
+  // Find the guest record
+  const guest = await db('event_guests')
+    .where({ 
+      event_id: eventId,
+      guest_id: phoneNumber 
+    })
+    .first();
+
+  if (!guest) {
+    return null;
+  }
+
+  // Get user ID from phone number
+  const user = await db('users').where({ phone_number: phoneNumber }).select('id').first();
+  const userId = user?.id;
+
+  // Get gift_option and wishlist_id directly from event_guests table
+  const giftOption = guest.gift_option || null;
+  const wishlistId = guest.wishlist_id || null;
+
+  // Get gift claims for this user and event (if user exists and gift_option is 'gift')
+  // Using consolidated wishlist table
+  let giftClaims = [];
+  if (userId && giftOption === 'gift') {
+    giftClaims = await db('wishlist')
+      .select(
+        'wishlist_id as id',
+        'wishlist_id as item_id',
+        'gift_name as item_name',
+        'gift_url as item_url',
+        'gift_image_url as item_image_url',
+        'claim_status',
+        'claimed_at'
+      )
+      .where({ event_id: eventId, claimed_by: userId })
+      .where('is_claimed', 1)
+      .orderBy('claimed_at', 'desc');
+  }
+
+  return {
+    rsvp_status: guest.rsvp_status,
+    invite_status: guest.invite_status,
+    responded_at: guest.responded_at,
+    gift_option: giftOption,
+    wishlist_id: wishlistId,
+    gift_claims: giftClaims.length > 0 ? giftClaims : null
+  };
+}
+
+module.exports = { addGuestsToEvent, getGuestsByEventId, updateEventGuestlist, respondToInvitation, getRsvpStatus };
 

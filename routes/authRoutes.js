@@ -1,7 +1,7 @@
 // src/routes/authRoutes.js
 const express = require('express');
 const { requestOTP, verifyOTP } = require('../services/otpService');
-const { findOrCreateUser, getUserById } = require('../models/userModel');
+const { findOrCreateUser, getUserById, updateUserName } = require('../models/userModel');
 const { requireAuth } = require('../middleware/authMiddleware');
 const router = express.Router();
 
@@ -68,7 +68,16 @@ router.post('/request-otp', async (req, res) => {
       console.log('✅ [verify-otp] Session ID:', req.session.id);
       console.log('✅ [verify-otp] Full session after set:', JSON.stringify(req.session, null, 2));
       
-      res.json({ success: true, user });
+      // Add is_name_set field based on whether name is null or not
+      const is_name_set = user.name !== null && user.name !== undefined && user.name.trim() !== '';
+      
+      res.json({ 
+        success: true, 
+        user: {
+          ...user,
+          is_name_set
+        }
+      });
     } catch (error) {
       console.error('Error verifying OTP:', error);
       res.status(500).json({ error: 'Failed to verify OTP' });
@@ -99,11 +108,84 @@ router.get('/me', requireAuth, async (req, res) => {
     }
     
     console.log('✅ [GET /me] Successfully returning user data');
-    res.json({ success: true, user });
+    // Add is_name_set field based on whether name is null or not
+    const is_name_set = user.name !== null && user.name !== undefined && user.name.trim() !== '';
+    res.json({ 
+      success: true, 
+      user: {
+        ...user,
+        is_name_set
+      }
+    });
   } catch (error) {
     console.error('❌ [GET /me] Error fetching user:', error);
     console.error('❌ [GET /me] Error stack:', error.stack);
     res.status(500).json({ error: 'Failed to fetch user details' });
+  }
+});
+
+// Save user name (phone_number picked from session)
+router.put('/name', requireAuth, async (req, res) => {
+  try {
+    const { name } = req.body;
+    
+    if (!name || typeof name !== 'string' || name.trim() === '') {
+      return res.status(400).json({ error: 'Name is required and must be a non-empty string' });
+    }
+    
+    // Get userId from session (set by requireAuth middleware)
+    const userId = req.userId || req.session.userId;
+    
+    if (!userId) {
+      return res.status(401).json({ error: 'User not authenticated' });
+    }
+    
+    // Update user name
+    const updatedUser = await updateUserName(userId, name.trim());
+    
+    res.json({ 
+      success: true, 
+      message: 'Name updated successfully',
+      user: {
+        ...updatedUser,
+        is_name_set: updatedUser.name !== null && updatedUser.name !== undefined && updatedUser.name.trim() !== ''
+      }
+    });
+  } catch (error) {
+    console.error('Error updating user name:', error);
+    res.status(500).json({ error: 'Failed to update name', details: error.message });
+  }
+});
+
+// Logout - destroy session
+router.post('/logout', requireAuth, async (req, res) => {
+  try {
+    const userId = req.userId || req.session.userId;
+    
+    // Destroy the session
+    req.session.destroy((err) => {
+      if (err) {
+        console.error('Error destroying session:', err);
+        return res.status(500).json({ error: 'Failed to logout', details: err.message });
+      }
+      
+      // Clear the session cookie
+      res.clearCookie('invyte.sid', {
+        httpOnly: true,
+        secure: false, // Set to true if using HTTPS
+        sameSite: 'lax',
+        path: '/'
+      });
+      
+      console.log('✅ [POST /logout] Session destroyed for userId:', userId);
+      res.json({ 
+        success: true, 
+        message: 'Logged out successfully' 
+      });
+    });
+  } catch (error) {
+    console.error('Error during logout:', error);
+    res.status(500).json({ error: 'Failed to logout', details: error.message });
   }
 });
 
