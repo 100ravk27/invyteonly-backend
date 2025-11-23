@@ -50,4 +50,14 @@ app.use('/wishlist', wishlistRoutes);
 
 app.get('/', (_, res) => res.send('InvyteOnly backend is running 🚀'));
 
+// Health check endpoint
+app.get('/health', (_, res) => {
+  res.status(200).json({
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    service: 'InvyteOnly Backend'
+  });
+});
+
 module.exports = app;
