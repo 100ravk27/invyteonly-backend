@@ -343,7 +343,8 @@ async function getEventById(id) {
 async function getAllEvents(userId = null) {
   let query = db('events as e')
     .join('users as u', 'e.host_id', 'u.id')
-    .select('e.*', 'u.name as host_name');
+    .select('e.*', 'u.name as host_name')
+    .where('e.status', '!=', 'deleted'); // Exclude deleted events
   
   // If userId is provided, filter by host_id
   if (userId) {
@@ -449,6 +450,7 @@ async function updateEvent(eventId, userId, eventData) {
 async function getEventsByHostId(hostId) {
   return await db('events')
     .where({ host_id: hostId })
+    .where('status', '!=', 'deleted') // Exclude deleted events
     .orderBy('created_at', 'desc');
 }
 
@@ -466,6 +468,7 @@ async function getEventsByGuestPhone(phone_number) {
       'eg.responded_at'
     )
     .where('eg.guest_id', phone_number)
+    .where('e.status', '!=', 'deleted') // Exclude deleted events
     .orderBy('e.created_at', 'desc');
   
   // Get host_name for each event
@@ -495,7 +498,7 @@ async function hydrateEvents(events) {
 }
 
 /**
- * Delete an event
+ * Soft delete an event (mark status as "deleted")
  * @param {string} eventId - Event ID
  * @param {string} userId - User ID (host)
  * @returns {boolean} - True if deleted, false if not found or not authorized
@@ -507,8 +510,10 @@ async function deleteEvent(eventId, userId) {
     return false;
   }
 
-  // Delete the event (cascading deletes will handle guestlist and wishlist items due to foreign keys)
-  await db('events').where({ id: eventId }).delete();
+  // Soft delete: Mark status as "deleted" instead of actually deleting
+  await db('events')
+    .where({ id: eventId })
+    .update({ status: 'deleted' });
   
   return true;
 }
