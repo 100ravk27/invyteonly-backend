@@ -1,5 +1,6 @@
 // src/app.js
 const express = require('express');
+const path = require('path');
 const session = require('express-session');
 // const sessionStore = require('./config/sessionStore'); // Removed - using in-memory sessions
 const authRoutes = require('./routes/authRoutes');
@@ -12,6 +13,9 @@ const app = express();
 app.set('trust proxy', 1);
 
 app.use(express.json());
+
+// Serve static files from the static folder
+app.use(express.static(path.join(__dirname, 'static')));
 
 // Determine if we're using HTTPS (check if behind SSL-terminating proxy)
 // const isSecure = process.env.FORCE_SECURE_COOKIE === 'true' || 
