@@ -257,6 +257,111 @@
       header{ flex-direction: column; align-items: flex-start; }
       .pill{ align-self: flex-start; }
     }
+  
+    /* --- Lead form + consent + store buttons --- */
+    .leadForm{
+      margin-top: 18px;
+      display: grid;
+      gap: 12px;
+      max-width: 620px;
+    }
+    .leadGrid{
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .field{
+      display: grid;
+      gap: 6px;
+    }
+    .field label{
+      font-size: 12px;
+      color: var(--muted);
+    }
+    .field input{
+      width: 100%;
+      padding: 12px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-size: 14px;
+      outline: none;
+    }
+    .field input:focus{
+      box-shadow: 0 0 0 4px rgba(26,86,219,0.12);
+      border-color: rgba(26,86,219,0.55);
+    }
+    .termsWrap{
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      padding: 12px 12px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,0.72);
+    }
+    .termsWrap input{
+      margin-top: 3px;
+      flex: 0 0 auto;
+    }
+    .termsText{
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .termsText a{
+      color: var(--brandDeep);
+      font-weight: 600;
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
+    .submitRow{
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+    .btn[disabled]{
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none !important;
+      box-shadow: 0 10px 25px rgba(2, 6, 23, 0.05) !important;
+    }
+    .storeRow{
+      display: none;
+      gap: 10px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+    .storeBtn{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 12px 16px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+      font-size: 13px;
+      box-shadow: 0 10px 25px rgba(2, 6, 23, 0.08);
+      transition: transform .12s ease, box-shadow .12s ease;
+      white-space: nowrap;
+    }
+    .storeBtn:hover{
+      transform: translateY(-1px);
+      box-shadow: 0 14px 30px rgba(2, 6, 23, 0.12);
+    }
+    .storeBtnPrimary{
+      background: linear-gradient(135deg, var(--brandDeep), var(--brand));
+      color: #fff;
+      border-color: transparent;
+    }
+    @media (max-width: 560px){
+      .leadGrid{ grid-template-columns: 1fr; }
+    }
+
   </style>
 </head>
 
@@ -296,6 +401,53 @@
           <a class="btn btnPrimary" href="mailto:team@invyteonly.com?subject=InvyteOnly%20Inquiry">Contact our team</a>
           <a class="btn" href="tel:+918618948196">Call: +91 8618948196</a>
         </div>
+
+        <!-- Lead capture form (optional) -->
+        <form class="leadForm" id="leadForm" action="#" method="post" novalidate>
+          <div class="leadGrid">
+            <div class="field">
+              <label for="name">Your name</label>
+              <input id="name" name="name" type="text" placeholder="Enter your name" autocomplete="name" />
+            </div>
+            <div class="field">
+              <label for="email">Email (optional)</label>
+              <input id="email" name="email" type="email" placeholder="you@example.com" autocomplete="email" />
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="phone">Mobile <span style="color:#D4AF37">*</span></label>
+            <input id="phone" name="phone" type="tel" required placeholder="+91 XXXXX XXXXX" autocomplete="tel" />
+          </div>
+
+          <div class="termsWrap">
+            <input type="checkbox" id="termsCheck" />
+            <div class="termsText">
+              By Submitting this form, you agree to our
+              <a href="/terms-of-use" target="_blank" rel="noopener noreferrer">Terms of Use</a>
+              and have read the
+              <a href="/privacy-policy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+            </div>
+          </div>
+
+          <div class="submitRow">
+            <button class="btn btnPrimary" id="submitBtn" type="submit" disabled>Download App</button>
+
+            <div class="storeRow" id="storeRow" aria-label="Download the app">
+              <a class="storeBtn storeBtnPrimary" id="playStoreBtn" href="#" target="_blank" rel="noopener noreferrer">
+                Get it on Google Play
+              </a>
+              <a class="storeBtn" id="appStoreBtn" href="#" target="_blank" rel="noopener noreferrer">
+                Download on the App Store
+              </a>
+            </div>
+          </div>
+
+          <p class="label" style="margin:0;">
+            Tip: Replace the store links in the HTML once your app is live.
+          </p>
+        </form>
+
       </section>
 
       <aside class="card" aria-label="Quick info and contact">
@@ -349,5 +501,32 @@
   <script>
     document.getElementById('y').textContent = new Date().getFullYear();
   </script>
+
+  <script>
+    // Consent-gated submit + app download reveal
+    (function () {
+      const terms = document.getElementById('termsCheck');
+      const submit = document.getElementById('submitBtn');
+      const storeRow = document.getElementById('storeRow');
+      const form = document.getElementById('leadForm');
+
+      if (!terms || !submit || !storeRow || !form) return;
+
+      const sync = () => {
+        const ok = terms.checked === true;
+        submit.disabled = !ok;
+        storeRow.style.display = ok ? 'flex' : 'none';
+      };
+
+      terms.addEventListener('change', sync);
+      sync();
+
+      // Static sample: prevent navigation on submit
+      form.addEventListener('submit', function (e) {
+        e.preventDefault();
+      });
+    })();
+  </script>
+
 </body>
 </html>
