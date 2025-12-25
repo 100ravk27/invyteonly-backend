@@ -1,0 +1,11 @@
+[{
+  "relation": ["delegate_permission/common.handle_all_urls"],
+  "target": {
+    "namespace": "android_app",
+    "package_name": "com.invyteonly.app",
+      "sha256_cert_fingerprints": [
+        "C5:52:2E:F8:80:96:CE:AB:2B:7D:3A:95:22:D2:91:C9:5A:31:B6:E9:D9:2B:10:40:57:AD:58:36:02:8E:F2:4E"
+      ]
+  }
+}]
+

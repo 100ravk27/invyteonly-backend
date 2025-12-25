@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "3RKHZS4JA6.com.invyteonly.app",
+        "paths": ["/events/*"]
+      }
+    ]
+  }
+}
+

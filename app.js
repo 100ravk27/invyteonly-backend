@@ -14,6 +14,15 @@ app.set('trust proxy', 1);
 
 app.use(express.json());
 
+// Serve .well-known files with application/json Content-Type (required for deeplinks)
+app.use('/.well-known', (req, res, next) => {
+  // Set Content-Type to application/json for deeplink verification files
+  if (req.path === '/apple-app-site-association' || req.path === '/assetlinks.json') {
+    res.setHeader('Content-Type', 'application/json');
+  }
+  next();
+}, express.static(path.join(__dirname, 'static', '.well-known')));
+
 // Serve static files from the static folder
 app.use(express.static(path.join(__dirname, 'static')));
 
