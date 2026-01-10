@@ -10,6 +10,8 @@ router.post('/request-otp', async (req, res) => {
       console.log('📥 Request OTP request body:', JSON.stringify(req.body, null, 2));
       // Support both 'phone_number' and 'phone' field names
       const phone_number = req.body.phone_number || req.body.phone;
+      // Support optional country_code (defaults to '91' for India)
+      const country_code = req.body.country_code || '91';
       
       if (!phone_number) {
         console.error('❌ Missing phone_number in request');
@@ -17,11 +19,29 @@ router.post('/request-otp', async (req, res) => {
         return res.status(400).json({ error: 'Phone number required' });
       }
       
-      const otp = await requestOTP(phone_number);
-      res.json({ success: true, message: 'OTP sent', debug: otp });
+      const result = await requestOTP(phone_number, country_code);
+      
+      // Check if AuthKey.io was used successfully
+      if (result.authKeySuccess) {
+        // AuthKey.io successfully sent the OTP
+        res.json({ 
+          success: true, 
+          message: 'OTP sent successfully via SMS',
+          logId: result.logId 
+        });
+      } else {
+        // AuthKey.io failed or not configured - fallback to debug mode
+        console.warn(`⚠️  [request-otp] AuthKey.io not used. Success: ${result.authKeySuccess}, Error: ${result.authKeyError}`);
+        res.json({ 
+          success: true, 
+          message: 'OTP sent (debug mode - SMS not sent via AuthKey.io)', 
+          debug: result.otp,
+          error: result.authKeyError || 'AuthKey.io not configured or failed'
+        });
+      }
     } catch (error) {
       console.error('Error requesting OTP:', error);
-      res.status(500).json({ error: 'Failed to send OTP' });
+      res.status(500).json({ error: 'Failed to send OTP', details: error.message });
     }
   });
   

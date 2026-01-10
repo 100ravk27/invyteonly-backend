@@ -1,6 +1,6 @@
 // src/models/otpModel.js
 // In-memory OTP storage (no database)
-const otpStore = {}; // { phone_number: { otp, expiresAt, used } }
+const otpStore = {}; // { phone_number: { otp, expiresAt, used, logId } }
 
 // Cleanup expired OTPs every 10 minutes
 setInterval(() => {
@@ -17,7 +17,7 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000); // 10 minutes
 
-async function saveOTP(phone_number, otp, expiresAt) {
+async function saveOTP(phone_number, otp, expiresAt, logId = null) {
   // Normalize phone number and OTP to strings for consistent storage
   const normalizedPhone = String(phone_number);
   const normalizedOTP = String(otp);
@@ -25,10 +25,11 @@ async function saveOTP(phone_number, otp, expiresAt) {
   otpStore[normalizedPhone] = {
     otp: normalizedOTP,
     expiresAt: expiresAt.getTime(), // Store as timestamp for easy comparison
-    used: false
+    used: false,
+    logId: logId || null // Store LogID from AuthKey.io for tracking
   };
   console.log(`💾 OTP saved in memory for ${normalizedPhone}`);
-  console.log(`   OTP: ${normalizedOTP}, Expires: ${new Date(expiresAt.getTime())}`);
+  console.log(`   OTP: ${normalizedOTP}, Expires: ${new Date(expiresAt.getTime())}, LogID: ${logId || 'N/A'}`);
 }
 
 async function validateOTP(phone_number, otp) {
