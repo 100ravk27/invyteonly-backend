@@ -162,48 +162,9 @@ async function createEvent(userId, eventData) {
     wishlist_items = await addItemsToEventDirectly(eventId, userId, eventData.wishlist_items);
   }
   
-  // Send event creation notification to host (async, don't block)
-  try {
-    const hostUser = await db('users')
-      .select('phone_number', 'name')
-      .where({ id: userId })
-      .first();
-    
-    if (hostUser && hostUser.phone_number) {
-      const eventTitle = event.title || 'Event';
-      const hostDisplayName = hostUser.name || host_name || 'InvyteOnly User';
-      
-      // Extract mobile number (remove country code if present)
-      let mobile = String(hostUser.phone_number);
-      const countryCode = '91'; // Default to India
-      if (mobile.startsWith(countryCode)) {
-        mobile = mobile.substring(countryCode.length);
-      }
-      // Remove any leading + or 0
-      mobile = mobile.replace(/^\+?0+/, '');
-      
-      const { sendEventCreationNotification } = require('../services/authkeyService');
-      
-      console.log(`📤 [Event] Sending event creation notification to host ${countryCode}${mobile} for event: ${eventTitle}`);
-      const smsResult = await sendEventCreationNotification(
-        mobile,
-        countryCode,
-        hostDisplayName,
-        eventTitle
-      );
-      
-      if (smsResult.success) {
-        console.log(`✅ [Event] Event creation notification sent successfully to host (LogID: ${smsResult.logId})`);
-      } else {
-        console.error(`❌ [Event] Failed to send event creation notification to host:`, smsResult.error || smsResult.message);
-      }
-    } else {
-      console.warn(`⚠️  [Event] Skipping event creation notification - host phone number not found`);
-    }
-  } catch (error) {
-    // Don't fail the event creation if notification fails
-    console.error(`❌ [Event] Error sending event creation notification to host:`, error.message);
-  }
+  // Note: Event creation notification to host has been removed
+  // Template 33223 ("has invited you") is meant for guests, not the host
+  // Invitees already receive invitation messages via addGuestsToEvent() (Template 33191)
   
   return { ...event, host_name, guestlist, wishlist_items };
 }
