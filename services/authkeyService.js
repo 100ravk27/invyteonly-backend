@@ -6,7 +6,7 @@ const AUTHKEY_BASE_URL = constants.AUTHKEY.BASE_URL;
 const AUTHKEY_API_KEY = constants.AUTHKEY.API_KEY;
 
 // Fixed app download link for all SMS messages
-const APP_DOWNLOAD_LINK = 'https://invyteonly.com/app.html';
+const APP_DOWNLOAD_LINK = 'https://invyteonly.com';
 
 /**
  * Send OTP using AuthKey.io SMS template
