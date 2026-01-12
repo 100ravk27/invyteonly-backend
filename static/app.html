@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download InvyteOnly App</title>
+  <meta name="description" content="Download the InvyteOnly app to view event details, RSVP, and celebrate with ease." />
+
+  <style>
+    :root{
+      --brand:#1A56DB;
+      --brandDeep:#0B2C6A;
+      --ink:#0b1220;
+      --muted:#5a667a;
+      --line:rgba(15,23,42,.12);
+      --shadow:0 10px 30px rgba(2,6,23,.08);
+      --radius:18px;
+    }
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;
+      background:#ffffff;
+      color:var(--ink);
+      min-height:100vh;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+    .card{
+      max-width:420px;
+      width:100%;
+      padding:28px;
+      border:1px solid var(--line);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      text-align:center;
+    }
+    h1{
+      margin:0 0 10px;
+      font-size:28px;
+    }
+    p{
+      margin:0 0 22px;
+      font-size:15px;
+      color:var(--muted);
+    }
+    .btn{
+      display:block;
+      width:100%;
+      padding:14px;
+      border-radius:14px;
+      text-decoration:none;
+      font-weight:700;
+      margin-bottom:12px;
+    }
+    .ios{
+      background:linear-gradient(135deg,var(--brandDeep),var(--brand));
+      color:#fff;
+    }
+    .android{
+      background:#fff;
+      color:var(--ink);
+      border:1px solid var(--line);
+    }
+    .footer{
+      margin-top:12px;
+      font-size:12px;
+      color:var(--muted);
+    }
+  </style>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function () {
+      var ua = navigator.userAgent || navigator.vendor || window.opera;
+      var ios = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+      var android = /Android/.test(ua);
+
+      if (ios) {
+        window.location.href = "https://apps.apple.com/";
+      } else if (android) {
+        window.location.href = "https://play.google.com/store";
+      }
+    });
+  </script>
+</head>
+
+<body>
+  <div class="card">
+    <h1>Get the InvyteOnly App</h1>
+    <p>View event details, RSVP, and stay updated — all in one place.</p>
+
+    <a class="btn ios" href="https://apps.apple.com/us/iphone/search?term=invyteonly" target="_blank">
+      Download on the App Store
+    </a>
+
+    <a class="btn android" href="https://play.google.com/store/search?q=invyteonly&c=apps" target="_blank">
+      Get it on Google Play
+    </a>
+
+    <div class="footer">
+      © <span id="y"></span> InvyteOnly
+    </div>
+  </div>
+
+  <script>
+    document.getElementById("y").textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>
