@@ -1,9 +1,49 @@
 // src/models/guestlistModel.js
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
+const { sendEventInvite } = require('../services/authkeyService');
 
-async function addGuestsToEvent(eventId, guests) {
+async function addGuestsToEvent(eventId, guests, eventDetails = null) {
   const created = [];
+  
+  // Get event details if not provided (for SMS sending)
+  let eventTitle = null;
+  let hostName = null;
+  let downloadLink = null;
+  
+  if (eventDetails) {
+    eventTitle = eventDetails.title || null;
+    hostName = eventDetails.host_name || eventDetails.hostName || 'InvyteOnly User';
+  } else {
+    // Fetch event details if not provided
+    const event = await db('events').where({ id: eventId }).first();
+    if (event) {
+      eventTitle = event.title || null;
+      const host = await db('users').select('name').where({ id: event.host_id }).first();
+      hostName = host?.name || 'InvyteOnly User';
+    }
+  }
+  
+  // If still missing details, fetch from database as fallback
+  if (!eventTitle || !hostName) {
+    const event = await db('events').where({ id: eventId }).first();
+    if (event) {
+      if (!eventTitle) eventTitle = event.title || 'Event';
+      if (!hostName) {
+        const host = await db('users').select('name').where({ id: event.host_id }).first();
+        hostName = host?.name || 'InvyteOnly User';
+      }
+    }
+  }
+  
+  // Ensure we have values for SMS (use defaults if missing)
+  eventTitle = eventTitle || 'Event';
+  hostName = hostName || 'InvyteOnly User';
+  
+  // Construct download/deep link using event ID
+  downloadLink = `https://invyteonly.com/events/${eventId}`;
+  
+  console.log(`📋 [Guestlist] Event details for SMS - title: "${eventTitle}", host: "${hostName}", downloadLink: "${downloadLink}"`);
   
   for (const guest of guests) {
     // Only accept object format with name and guest_id/phone_number
@@ -43,6 +83,41 @@ async function addGuestsToEvent(eventId, guests) {
       invite_status: 'invited',
       rsvp_status: 'pending'
     });
+    
+    // Send SMS invitation via AuthKey.io (async, don't block)
+    // We ensure eventTitle, hostName, and downloadLink always have values above
+    try {
+      // Extract mobile number (remove country code if present)
+      let mobile = String(guestIdValue);
+      const countryCode = '91'; // Default to India
+      if (mobile.startsWith(countryCode)) {
+        mobile = mobile.substring(countryCode.length);
+      }
+      // Remove any leading + or 0
+      mobile = mobile.replace(/^\+?0+/, '');
+      
+      console.log(`📤 [Guestlist] Sending invitation SMS to ${countryCode}${mobile} for event: ${eventTitle}`);
+      console.log(`📤 [Guestlist] SMS params - host: "${hostName}", event: "${eventTitle}", link: "${downloadLink}"`);
+      
+      const smsResult = await sendEventInvite(
+        mobile,
+        countryCode,
+        hostName,
+        eventTitle,
+        downloadLink
+      );
+      
+      if (smsResult.success) {
+        console.log(`✅ [Guestlist] Invitation SMS sent successfully to ${guestIdValue} (LogID: ${smsResult.logId})`);
+      } else {
+        console.error(`❌ [Guestlist] Failed to send invitation SMS to ${guestIdValue}:`, smsResult.error || smsResult.message);
+        console.error(`❌ [Guestlist] Full error details:`, JSON.stringify(smsResult, null, 2));
+      }
+    } catch (error) {
+      // Don't fail the guest addition if SMS fails
+      console.error(`❌ [Guestlist] Error sending invitation SMS to ${guestIdValue}:`, error.message);
+      console.error(`❌ [Guestlist] Error stack:`, error.stack);
+    }
   }
   
   return created;
@@ -139,7 +214,14 @@ async function updateEventGuestlist(eventId, guests) {
   });
   
   if (guestsToAdd.length > 0) {
-    await addGuestsToEvent(eventId, guestsToAdd);
+    // Get event details for SMS
+    const event = await db('events').where({ id: eventId }).first();
+    const host = event ? await db('users').select('name').where({ id: event.host_id }).first() : null;
+    
+    await addGuestsToEvent(eventId, guestsToAdd, {
+      title: event?.title || null,
+      host_name: host?.name || null
+    });
   }
   
   // Return updated guestlist
@@ -216,10 +298,60 @@ async function respondToInvitation(eventId, guestName, guestId, rsvpStatus = 'ye
       });
   }
 
-  // Return updated guest record
-  return await db('event_guests')
+  // Get updated guest record
+  const updatedGuest = await db('event_guests')
     .where(whereClause)
     .first();
+
+  // Send RSVP notification to host (async, don't block)
+  try {
+    const event = await db('events').where({ id: eventId }).first();
+    if (event) {
+      const host = await db('users')
+        .select('phone_number', 'name')
+        .where({ id: event.host_id })
+        .first();
+      
+      if (host && host.phone_number) {
+        const guestDisplayName = updatedGuest.guest_name || guestName || 'Guest';
+        const eventTitle = event.title || 'Event';
+        
+        // Extract mobile number (remove country code if present)
+        let mobile = String(host.phone_number);
+        const countryCode = '91'; // Default to India
+        if (mobile.startsWith(countryCode)) {
+          mobile = mobile.substring(countryCode.length);
+        }
+        // Remove any leading + or 0
+        mobile = mobile.replace(/^\+?0+/, '');
+        
+        const { sendRSVPNotification } = require('../services/authkeyService');
+        
+        console.log(`📤 [Guestlist] Sending RSVP notification to host ${countryCode}${mobile} for event: ${eventTitle}`);
+        const smsResult = await sendRSVPNotification(
+          mobile,
+          countryCode,
+          guestDisplayName,
+          rsvpStatus,
+          eventTitle
+        );
+        
+        if (smsResult.success) {
+          console.log(`✅ [Guestlist] RSVP notification sent successfully to host (LogID: ${smsResult.logId})`);
+        } else {
+          console.error(`❌ [Guestlist] Failed to send RSVP notification to host:`, smsResult.error || smsResult.message);
+        }
+      } else {
+        console.warn(`⚠️  [Guestlist] Skipping RSVP notification - host phone number not found`);
+      }
+    }
+  } catch (error) {
+    // Don't fail the RSVP response if notification fails
+    console.error(`❌ [Guestlist] Error sending RSVP notification to host:`, error.message);
+  }
+
+  // Return updated guest record
+  return updatedGuest;
 }
 
 /**
@@ -278,5 +410,114 @@ async function getRsvpStatus(eventId, phoneNumber) {
   };
 }
 
-module.exports = { addGuestsToEvent, getGuestsByEventId, updateEventGuestlist, respondToInvitation, getRsvpStatus };
+/**
+ * Send RSVP reminders to all guests who haven't responded yet (rsvp_status = 'pending')
+ * @param {string} eventId - Event ID
+ * @returns {Promise<Object>} - Summary of reminder sending results
+ */
+async function sendRSVPReminders(eventId) {
+  // Get event details
+  const event = await db('events').where({ id: eventId }).first();
+  if (!event) {
+    throw new Error('Event not found');
+  }
+
+  // Get host details
+  const host = await db('users').select('name').where({ id: event.host_id }).first();
+  const hostName = host?.name || 'InvyteOnly User';
+  const eventTitle = event.title || 'Event';
+  const rsvpLink = `https://invyteonly.com/events/${eventId}`;
+
+  // Get all guests with pending RSVP status
+  const pendingGuests = await db('event_guests')
+    .where({ 
+      event_id: eventId,
+      rsvp_status: 'pending'
+    })
+    .select('guest_id', 'guest_name');
+
+  if (pendingGuests.length === 0) {
+    return {
+      success: true,
+      message: 'No pending guests to remind',
+      total: 0,
+      sent: 0,
+      failed: 0,
+      results: []
+    };
+  }
+
+  const { sendRSVPReminder } = require('../services/authkeyService');
+  const results = [];
+  let sentCount = 0;
+  let failedCount = 0;
+
+  console.log(`📤 [Guestlist] Sending RSVP reminders to ${pendingGuests.length} pending guests for event: ${eventTitle}`);
+
+  for (const guest of pendingGuests) {
+    try {
+      // Extract mobile number (remove country code if present)
+      let mobile = String(guest.guest_id);
+      const countryCode = '91'; // Default to India
+      if (mobile.startsWith(countryCode)) {
+        mobile = mobile.substring(countryCode.length);
+      }
+      // Remove any leading + or 0
+      mobile = mobile.replace(/^\+?0+/, '');
+
+      console.log(`📤 [Guestlist] Sending reminder to ${countryCode}${mobile} for event: ${eventTitle}`);
+      
+      const smsResult = await sendRSVPReminder(
+        mobile,
+        countryCode,
+        eventTitle,
+        rsvpLink,
+        hostName
+      );
+
+      if (smsResult.success) {
+        sentCount++;
+        console.log(`✅ [Guestlist] Reminder sent successfully to ${guest.guest_id} (LogID: ${smsResult.logId})`);
+        results.push({
+          guest_id: guest.guest_id,
+          guest_name: guest.guest_name,
+          success: true,
+          logId: smsResult.logId,
+          message: smsResult.message
+        });
+      } else {
+        failedCount++;
+        console.error(`❌ [Guestlist] Failed to send reminder to ${guest.guest_id}:`, smsResult.error || smsResult.message);
+        results.push({
+          guest_id: guest.guest_id,
+          guest_name: guest.guest_name,
+          success: false,
+          error: smsResult.error || smsResult.message
+        });
+      }
+    } catch (error) {
+      failedCount++;
+      console.error(`❌ [Guestlist] Error sending reminder to ${guest.guest_id}:`, error.message);
+      results.push({
+        guest_id: guest.guest_id,
+        guest_name: guest.guest_name,
+        success: false,
+        error: error.message
+      });
+    }
+  }
+
+  console.log(`📊 [Guestlist] Reminder summary - Total: ${pendingGuests.length}, Sent: ${sentCount}, Failed: ${failedCount}`);
+
+  return {
+    success: true,
+    message: `Reminders sent to ${sentCount} out of ${pendingGuests.length} pending guests`,
+    total: pendingGuests.length,
+    sent: sentCount,
+    failed: failedCount,
+    results: results
+  };
+}
+
+module.exports = { addGuestsToEvent, getGuestsByEventId, updateEventGuestlist, respondToInvitation, getRsvpStatus, sendRSVPReminders };
 

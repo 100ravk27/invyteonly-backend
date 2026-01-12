@@ -3,7 +3,7 @@ const express = require('express');
 const db = require('../config/db');
 const { createEvent, saveEventDraft, getEventById, getAllEvents, updateEvent, deleteEvent, getEventsByHostId, getEventsByGuestPhone, hydrateEvents } = require('../models/eventModel');
 const { getUserById } = require('../models/userModel');
-const { respondToInvitation, getRsvpStatus } = require('../models/guestlistModel');
+const { respondToInvitation, getRsvpStatus, sendRSVPReminders } = require('../models/guestlistModel');
 const { requireAuth } = require('../middleware/authMiddleware');
 const router = express.Router();
 
@@ -61,6 +61,123 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
+// Test endpoint for AuthKey.io SMS notifications (with dummy values)
+// Uses GET API format: https://api.authkey.io/request?authkey=...&mobile=...&sid=...&var1=...&var2=...&var3=...
+// GET /events/test-sms?type=rsvp|event&mobile=8147005621
+// No authentication required for testing
+router.get('/test-sms', async (req, res) => {
+  try {
+    const axios = require('axios');
+    const constants = require('../config/constants');
+    
+    const { type = 'rsvp', mobile = '8147005621', country_code = '91' } = req.query;
+    
+    // Dummy values for testing
+    const dummyEventId = '7299a6e2-c55a-4e92-a181-59022a31abf3';
+    const dummyEventName = 'Birthday Party';
+    const dummyGuestName = 'John Doe';
+    const dummyHostName = 'Jane Smith';
+    const dummyRsvpResponse = 'Yes';
+    
+    const AUTHKEY_API_KEY = constants.AUTHKEY.API_KEY;
+    const AUTHKEY_BASE_URL = constants.AUTHKEY.BASE_URL;
+    
+    let url, params, templateSid;
+    
+    if (type === 'rsvp') {
+      // Test RSVP notification using template 33224
+      // Format: var1=Guest Name, var2=RSVP Response, var3=Event Name
+      templateSid = constants.AUTHKEY.TEMPLATES.RSVP_NOTIFICATION; // 33224
+      url = `${AUTHKEY_BASE_URL}/request`;
+      params = {
+        authkey: AUTHKEY_API_KEY,
+        mobile: mobile,
+        country_code: country_code,
+        sid: templateSid,
+        var1: dummyGuestName, // Guest name
+        var2: dummyRsvpResponse, // RSVP response (Yes/No/Maybe)
+        var3: dummyEventName // Event name
+      };
+      console.log(`🧪 [Test] Testing RSVP notification (GET API) to ${country_code}${mobile}`);
+    } else if (type === 'event') {
+      // Test Event creation notification using template 33223
+      // Format: var1=Host Name, var2=Event Name, var3=Fixed App URL
+      templateSid = constants.AUTHKEY.TEMPLATES.EVENT_CREATION; // 33223
+      url = `${AUTHKEY_BASE_URL}/request`;
+      params = {
+        authkey: AUTHKEY_API_KEY,
+        mobile: mobile,
+        country_code: country_code,
+        sid: templateSid,
+        var1: dummyHostName, // Host name
+        var2: dummyEventName, // Event name
+        var3: 'https://invyteonly.com/app' // Fixed app download link
+      };
+      console.log(`🧪 [Test] Testing Event creation notification (GET API) to ${country_code}${mobile}`);
+    } else {
+      return res.status(400).json({ 
+        error: 'Invalid type. Use "rsvp" or "event"',
+        usage: {
+          rsvp: '/events/test-sms?type=rsvp&mobile=8147005621',
+          event: '/events/test-sms?type=event&mobile=8147005621'
+        }
+      });
+    }
+    
+    // Make GET request to AuthKey.io API
+    console.log(`📤 [Test] URL: ${url}`);
+    console.log(`📤 [Test] Params:`, JSON.stringify({ ...params, authkey: `${AUTHKEY_API_KEY.substring(0, 8)}...` }, null, 2));
+    
+    const response = await axios.get(url, { 
+      params,
+      headers: {
+        'accept': '*/*',
+        'accept-language': 'en-US,en;q=0.9',
+        'origin': 'https://console.authkey.io',
+        'referer': 'https://console.authkey.io/',
+        'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
+      }
+    });
+    
+    console.log(`✅ [Test] Response status: ${response.status}`);
+    console.log(`✅ [Test] Response data:`, JSON.stringify(response.data, null, 2));
+    
+    res.json({
+      success: true,
+      message: `Test SMS sent (${type}) using GET API`,
+      testData: {
+        type: type,
+        mobile: `${country_code}${mobile}`,
+        templateSid: templateSid,
+        dummyValues: type === 'rsvp' 
+          ? { guestName: dummyGuestName, rsvpResponse: dummyRsvpResponse, eventName: dummyEventName }
+          : { hostName: dummyHostName, eventName: dummyEventName, appLink: 'https://invyteonly.com/app' }
+      },
+      result: {
+        logId: response.data?.LogID || null,
+        message: response.data?.Message || 'Submitted Successfully',
+        data: response.data
+      },
+      curlCommand: `curl -G '${url}' ${Object.entries(params).map(([k, v]) => `--data-urlencode '${k}=${v}'`).join(' \\\n  ')}`
+    });
+  } catch (error) {
+    console.error('❌ [Test] Error testing SMS:', error);
+    console.error('   Status:', error.response?.status);
+    console.error('   Response Data:', JSON.stringify(error.response?.data, null, 2));
+    console.error('   Error Message:', error.message);
+    
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to test SMS', 
+      details: error.message,
+      statusCode: error.response?.status,
+      responseData: error.response?.data || null,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Get event by ID (API only - requires authentication)
 router.get('/:id', requireAuth, async (req, res) => {
   try {
     const event = await getEventById(req.params.id);
@@ -276,6 +393,46 @@ router.get('/:eventId/rsvp-status', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('Error getting RSVP status:', error);
     res.status(500).json({ error: 'Failed to get RSVP status', details: error.message });
+  }
+});
+
+// Send RSVP reminders to all guests who haven't responded yet (rsvp_status = 'pending')
+// Only the event host can send reminders
+// POST /events/:eventId/send-reminders
+router.post('/:eventId/send-reminders', requireAuth, async (req, res) => {
+  try {
+    const { eventId } = req.params;
+    
+    // Verify the logged-in user is the host of this event
+    const event = await db('events').where({ id: eventId }).first();
+    if (!event) {
+      return res.status(404).json({ error: 'Event not found' });
+    }
+
+    if (event.host_id !== req.userId) {
+      return res.status(403).json({ error: 'Only the event host can send reminders' });
+    }
+
+    // Check if event is soft-deleted
+    if (event.status === 'deleted') {
+      return res.status(400).json({ error: 'Cannot send reminders for deleted events' });
+    }
+
+    // Send reminders to all pending guests
+    const result = await sendRSVPReminders(eventId);
+
+    res.json({
+      success: result.success,
+      message: result.message,
+      event_id: eventId,
+      total: result.total,
+      sent: result.sent,
+      failed: result.failed,
+      results: result.results
+    });
+  } catch (error) {
+    console.error('Error sending RSVP reminders:', error);
+    res.status(500).json({ error: 'Failed to send reminders', details: error.message });
   }
 });
 

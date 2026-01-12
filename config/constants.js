@@ -5,11 +5,15 @@ module.exports = {
   // AuthKey.io SMS Service Configuration
   AUTHKEY: {
     API_KEY: 'e8329dd6df4d1060',
-    BASE_URL: 'https://console.authkey.io',
+    BASE_URL: 'https://api.authkey.io', // GET API base URL
+    POST_API_URL: 'https://console.authkey.io/restapi/requestjson.php', // POST API base URL
     // SMS Templates
     TEMPLATES: {
       OTP: '33188',        // OTP Fixed template
-      EVENT_INVITE: '33191' // Fixed Invite template
+      EVENT_INVITE: '33191', // Fixed Invite template
+      RSVP_REMINDER: '33196', // RSVP Reminder template
+      RSVP_NOTIFICATION: '33224', // RSVP Notification to host template
+      EVENT_CREATION: '33223' // Event Creation notification template
     }
   },
 
