@@ -23,6 +23,11 @@ app.use('/.well-known', (req, res, next) => {
   next();
 }, express.static(path.join(__dirname, 'static', '.well-known')));
 
+// Serve app.html at /app (without .html extension) - must be before static middleware
+app.get('/app', (req, res) => {
+  res.sendFile(path.join(__dirname, 'static', 'app.html'));
+});
+
 // Serve static files from the static folder
 app.use(express.static(path.join(__dirname, 'static')));
 
