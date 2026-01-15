@@ -162,9 +162,8 @@ async function createEvent(userId, eventData) {
     wishlist_items = await addItemsToEventDirectly(eventId, userId, eventData.wishlist_items);
   }
   
-  // Note: Event creation notification to host has been removed
-  // Template 33223 ("has invited you") is meant for guests, not the host
-  // Invitees already receive invitation messages via addGuestsToEvent() (Template 33191)
+  // Note: No message is sent to host when event is created
+  // Guests receive invitation messages via addGuestsToEvent() using Template 33223
   
   return { ...event, host_name, guestlist, wishlist_items };
 }
@@ -396,8 +395,11 @@ async function updateEvent(eventId, userId, eventData) {
   if (eventData.theme !== undefined) eventUpdate.theme = eventData.theme;
   if (eventData.status !== undefined) eventUpdate.status = eventData.status;
   
+  // Track if event details were updated (for sending update notifications)
+  const eventDetailsUpdated = Object.keys(eventUpdate).length > 0;
+  
   // Update event fields if any
-  if (Object.keys(eventUpdate).length > 0) {
+  if (eventDetailsUpdated) {
     await db('events').where({ id: eventId }).update(eventUpdate);
   }
   
@@ -410,8 +412,65 @@ async function updateEvent(eventId, userId, eventData) {
         await db('event_guests').where({ event_id: eventId }).delete();
         guestlist = [];
       } else {
-        // Replace guestlist
-        guestlist = await updateEventGuestlist(eventId, eventData.guestlist);
+        // Get event details for SMS notifications (fetch after update if event was updated)
+        const eventForSMS = await db('events').where({ id: eventId }).first();
+        const host = eventForSMS ? await db('users').select('name').where({ id: eventForSMS.host_id }).first() : null;
+        
+        // Replace guestlist and pass event details for update notifications
+        guestlist = await updateEventGuestlist(eventId, eventData.guestlist, {
+          title: eventForSMS?.title || null,
+          host_name: host?.name || null
+        });
+      }
+    }
+  } else if (eventDetailsUpdated) {
+    // If event details were updated but guestlist wasn't changed, send update notifications to existing guests
+    const { sendEventUpdate } = require('../services/authkeyService');
+    const updatedEvent = await db('events').where({ id: eventId }).first();
+    const host = updatedEvent ? await db('users').select('name').where({ id: updatedEvent.host_id }).first() : null;
+    
+    if (updatedEvent && host) {
+      // Get all existing guests (not removed)
+      const existingGuests = await db('event_guests')
+        .where({ event_id: eventId })
+        .where('invite_status', '!=', 'removed')
+        .select('guest_id', 'guest_name');
+      
+      const hostName = host.name || 'InvyteOnly User';
+      const eventTitle = updatedEvent.title || 'Event';
+      
+      // Send update notifications to existing guests
+      for (const guest of existingGuests) {
+        if (guest.guest_id) {
+          try {
+            // Extract mobile number (remove country code if present)
+            let mobile = String(guest.guest_id);
+            const countryCode = '91'; // Default to India
+            if (mobile.startsWith(countryCode)) {
+              mobile = mobile.substring(countryCode.length);
+            }
+            // Remove any leading + or 0
+            mobile = mobile.replace(/^\+?0+/, '');
+            
+            console.log(`📤 [Event] Sending event update notification to existing guest ${countryCode}${mobile} for event: ${eventTitle}`);
+            
+            const smsResult = await sendEventUpdate(
+              mobile,
+              countryCode,
+              hostName,
+              eventTitle
+            );
+            
+            if (smsResult.success) {
+              console.log(`✅ [Event] Event update notification sent successfully to ${guest.guest_id} (LogID: ${smsResult.logId})`);
+            } else {
+              console.error(`❌ [Event] Failed to send event update notification to ${guest.guest_id}:`, smsResult.error || smsResult.message);
+            }
+          } catch (error) {
+            // Don't fail the event update if SMS fails
+            console.error(`❌ [Event] Error sending event update notification to ${guest.guest_id}:`, error.message);
+          }
+        }
       }
     }
   }

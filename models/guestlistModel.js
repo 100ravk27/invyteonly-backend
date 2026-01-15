@@ -1,7 +1,7 @@
 // src/models/guestlistModel.js
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
-const { sendEventInvite } = require('../services/authkeyService');
+const { sendEventInvite, sendEventUpdate } = require('../services/authkeyService');
 
 async function addGuestsToEvent(eventId, guests, eventDetails = null) {
   const created = [];
@@ -129,7 +129,7 @@ async function getGuestsByEventId(eventId) {
     .orderBy('created_at', 'asc');
 }
 
-async function updateEventGuestlist(eventId, guests) {
+async function updateEventGuestlist(eventId, guests, eventDetails = null) {
   // Get current guests
   const currentGuests = await getGuestsByEventId(eventId);
   const currentGuestIds = new Set(currentGuests.map(g => g.guest_id).filter(Boolean));
@@ -172,9 +172,35 @@ async function updateEventGuestlist(eventId, guests) {
     }
   }
   
+  // Get event details for SMS (if not provided, fetch from database)
+  let eventTitle = null;
+  let hostName = null;
+  
+  if (eventDetails) {
+    eventTitle = eventDetails.title || null;
+    hostName = eventDetails.host_name || eventDetails.hostName || null;
+  }
+  
+  // Fetch from database if not provided
+  if (!eventTitle || !hostName) {
+    const event = await db('events').where({ id: eventId }).first();
+    if (event) {
+      if (!eventTitle) eventTitle = event.title || 'Event';
+      if (!hostName) {
+        const host = await db('users').select('name').where({ id: event.host_id }).first();
+        hostName = host?.name || 'InvyteOnly User';
+      }
+    }
+  }
+  
+  // Ensure we have values for SMS (use defaults if missing)
+  eventTitle = eventTitle || 'Event';
+  hostName = hostName || 'InvyteOnly User';
+  
   // Update existing guests (those already in the list)
   // - Update their name if provided
   // - Mark as 'invited' if they were previously 'removed'
+  // - Send event update notification SMS
   const existingGuestsToUpdate = Array.from(newGuestIds).filter(id => currentGuestIds.has(id));
   if (existingGuestsToUpdate.length > 0) {
     for (const phoneNumber of existingGuestsToUpdate) {
@@ -204,6 +230,39 @@ async function updateEventGuestlist(eventId, guests) {
           .where({ event_id: eventId, guest_id: phoneNumber })
           .update(updateData);
       }
+      
+      // Send event update notification SMS to existing guests
+      // Only send if guest is not removed and has a valid phone number
+      if (existingGuest.invite_status !== 'removed' && phoneNumber) {
+        try {
+          // Extract mobile number (remove country code if present)
+          let mobile = String(phoneNumber);
+          const countryCode = '91'; // Default to India
+          if (mobile.startsWith(countryCode)) {
+            mobile = mobile.substring(countryCode.length);
+          }
+          // Remove any leading + or 0
+          mobile = mobile.replace(/^\+?0+/, '');
+          
+          console.log(`📤 [Guestlist] Sending event update notification to existing guest ${countryCode}${mobile} for event: ${eventTitle}`);
+          
+          const smsResult = await sendEventUpdate(
+            mobile,
+            countryCode,
+            hostName,
+            eventTitle
+          );
+          
+          if (smsResult.success) {
+            console.log(`✅ [Guestlist] Event update notification sent successfully to ${phoneNumber} (LogID: ${smsResult.logId})`);
+          } else {
+            console.error(`❌ [Guestlist] Failed to send event update notification to ${phoneNumber}:`, smsResult.error || smsResult.message);
+          }
+        } catch (error) {
+          // Don't fail the guest update if SMS fails
+          console.error(`❌ [Guestlist] Error sending event update notification to ${phoneNumber}:`, error.message);
+        }
+      }
     }
   }
   
@@ -214,14 +273,21 @@ async function updateEventGuestlist(eventId, guests) {
   });
   
   if (guestsToAdd.length > 0) {
-    // Get event details for SMS
-    const event = await db('events').where({ id: eventId }).first();
-    const host = event ? await db('users').select('name').where({ id: event.host_id }).first() : null;
-    
-    await addGuestsToEvent(eventId, guestsToAdd, {
-      title: event?.title || null,
-      host_name: host?.name || null
-    });
+    // Get event details for SMS (if not already fetched)
+    if (!eventTitle || !hostName) {
+      const event = await db('events').where({ id: eventId }).first();
+      const host = event ? await db('users').select('name').where({ id: event.host_id }).first() : null;
+      
+      await addGuestsToEvent(eventId, guestsToAdd, {
+        title: event?.title || null,
+        host_name: host?.name || null
+      });
+    } else {
+      await addGuestsToEvent(eventId, guestsToAdd, {
+        title: eventTitle,
+        host_name: hostName
+      });
+    }
   }
   
   // Return updated guestlist
@@ -426,7 +492,6 @@ async function sendRSVPReminders(eventId) {
   const host = await db('users').select('name').where({ id: event.host_id }).first();
   const hostName = host?.name || 'InvyteOnly User';
   const eventTitle = event.title || 'Event';
-  const rsvpLink = `https://invyteonly.com/events/${eventId}`;
 
   // Get all guests with pending RSVP status
   const pendingGuests = await db('event_guests')
@@ -471,7 +536,6 @@ async function sendRSVPReminders(eventId) {
         mobile,
         countryCode,
         eventTitle,
-        rsvpLink,
         hostName
       );
 

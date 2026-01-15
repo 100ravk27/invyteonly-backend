@@ -67,7 +67,7 @@ async function sendOTP(mobile, countryCode = '91', otp, validityMinutes = consta
 
 /**
  * Send event invitation using AuthKey.io SMS template
- * Uses Template SID 33191: "{#var1#} has invited you to {#var2#} event. View Details and RSVP on the InvyteOnly app. Download here {#var3#}"
+ * Uses Template SID 33223: "{#var1#} has invited you to {#var2#} event. View event details and send RSVP on the InvyteOnly app. Download Now {#var3#}"
  * 
  * @param {string} mobile - Recipient mobile number (without country code)
  * @param {string} countryCode - Country code (default: "91" for India)
@@ -86,7 +86,7 @@ async function sendEventInvite(mobile, countryCode = '91', inviterName, eventNam
     authkey: AUTHKEY_API_KEY,
     mobile: mobile,
     country_code: countryCode,
-    sid: constants.AUTHKEY.TEMPLATES.EVENT_INVITE, // Fixed Invite template ID (33191)
+    sid: constants.AUTHKEY.TEMPLATES.EVENT_INVITE, // Event Invite template ID (33223)
     var1: inviterName, // Host/inviter name
     var2: eventName, // Event title
     var3: APP_DOWNLOAD_LINK // Fixed app download link
@@ -184,16 +184,15 @@ async function verifyOTPWithAuthKey(channel = 'SMS', otp, logId) {
 
 /**
  * Send RSVP reminder using AuthKey.io SMS template
- * Uses Template SID 33196: "Reminder to RSVP for {#var1#}. Please share your response here: {#var2#} Hosted by {#var3#}."
+ * Uses Template SID 33225: "Donot forget to RSVP for upcoming {#var1#} event hosted by {#var2#}. Please share your response here: {#var3#} . InvyteOnly"
  * 
  * @param {string} mobile - Recipient mobile number (without country code)
  * @param {string} countryCode - Country code (default: "91" for India)
  * @param {string} eventName - Name of the event
- * @param {string} rsvpLink - RSVP/deep link for the event
  * @param {string} hostName - Name of the event host
  * @returns {Promise<Object>} - Response with LogID if successful
  */
-async function sendRSVPReminder(mobile, countryCode = '91', eventName, rsvpLink, hostName) {
+async function sendRSVPReminder(mobile, countryCode = '91', eventName, hostName) {
   if (!AUTHKEY_API_KEY) {
     throw new Error('AUTHKEY_API_KEY is not configured');
   }
@@ -203,10 +202,10 @@ async function sendRSVPReminder(mobile, countryCode = '91', eventName, rsvpLink,
     authkey: AUTHKEY_API_KEY,
     mobile: mobile,
     country_code: countryCode,
-    sid: constants.AUTHKEY.TEMPLATES.RSVP_REMINDER, // RSVP Reminder template ID (33196)
-    var1: eventName, // Event title
-    var2: APP_DOWNLOAD_LINK, // Fixed app download link
-    var3: hostName // Host name
+    sid: constants.AUTHKEY.TEMPLATES.RSVP_REMINDER, // RSVP Reminder template ID (33225)
+    var1: eventName, // Event name
+    var2: hostName, // Host name
+    var3: APP_DOWNLOAD_LINK // RSVP link or app download link
   };
 
   const headers = {
@@ -391,12 +390,80 @@ async function sendEventCreationNotification(mobile, countryCode = '91', hostNam
   }
 }
 
+/**
+ * Send event update notification using AuthKey.io SMS template
+ * Uses Template SID 33342: "{#var1#} has made changes to the {#var2#} event. Open the app to view the latest updates now {#var3#}"
+ * Format: var1=Host Name, var2=Event Name, var3=Fixed App URL
+ * 
+ * @param {string} mobile - Recipient mobile number (without country code)
+ * @param {string} countryCode - Country code (default: "91" for India)
+ * @param {string} hostName - Name of the event host
+ * @param {string} eventName - Name of the event
+ * @returns {Promise<Object>} - Response with LogID if successful
+ */
+async function sendEventUpdate(mobile, countryCode = '91', hostName, eventName) {
+  if (!AUTHKEY_API_KEY) {
+    throw new Error('AUTHKEY_API_KEY is not configured');
+  }
+
+  const url = `${AUTHKEY_BASE_URL}/request`;
+  const params = {
+    authkey: AUTHKEY_API_KEY,
+    mobile: mobile,
+    country_code: countryCode,
+    sid: constants.AUTHKEY.TEMPLATES.EVENT_UPDATE, // Event Update template ID (33342)
+    var1: hostName, // Host name
+    var2: eventName, // Event name
+    var3: APP_DOWNLOAD_LINK // Fixed app download link
+  };
+
+  const headers = {
+    'accept': '*/*',
+    'accept-language': 'en-US,en;q=0.9',
+    'origin': 'https://console.authkey.io',
+    'referer': 'https://console.authkey.io/',
+    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
+  };
+
+  try {
+    console.log(`📤 [AuthKey.io] Sending event update notification to ${countryCode}${mobile}`);
+    console.log(`📤 [AuthKey.io] URL: ${url}`);
+    console.log(`📤 [AuthKey.io] Method: GET`);
+    console.log(`📤 [AuthKey.io] Params:`, JSON.stringify({ ...params, authkey: `${AUTHKEY_API_KEY.substring(0, 8)}...` }, null, 2));
+    
+    const response = await axios.get(url, { params, headers });
+    console.log(`✅ [AuthKey.io] Response status: ${response.status}`);
+    console.log(`✅ [AuthKey.io] Response data:`, JSON.stringify(response.data, null, 2));
+    
+    return {
+      success: true,
+      logId: response.data?.LogID || null,
+      message: response.data?.Message || 'Update notification sent successfully',
+      data: response.data
+    };
+  } catch (error) {
+    console.error('❌ [AuthKey.io] Error sending event update notification:');
+    console.error('   Status:', error.response?.status);
+    console.error('   Status Text:', error.response?.statusText);
+    console.error('   Response Data:', JSON.stringify(error.response?.data, null, 2));
+    console.error('   Error Message:', error.message);
+    console.error('   Error Stack:', error.stack);
+    
+    return {
+      success: false,
+      error: error.response?.data || error.message,
+      statusCode: error.response?.status,
+      message: 'Failed to send update notification via AuthKey.io'
+    };
+  }
+}
+
 module.exports = {
   sendOTP,
   sendEventInvite,
   sendRSVPReminder,
   sendRSVPNotification,
-  sendEventCreationNotification,
+  sendEventUpdate,
   verifyOTPWithAuthKey
 };
 

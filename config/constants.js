@@ -10,10 +10,10 @@ module.exports = {
     // SMS Templates
     TEMPLATES: {
       OTP: '33188',        // OTP Fixed template
-      EVENT_INVITE: '33191', // Fixed Invite template
-      RSVP_REMINDER: '33196', // RSVP Reminder template
+      EVENT_INVITE: '33223', // Event Invite template (was EVENT_CREATION, now used for invites)
+      RSVP_REMINDER: '33225', // RSVP Reminder template
       RSVP_NOTIFICATION: '33224', // RSVP Notification to host template
-      EVENT_CREATION: '33223' // Event Creation notification template
+      EVENT_UPDATE: '33342' // Event Update notification template
     }
   },
 
